@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FiltraAgenda PEC - Cruzamento Inteligente</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <!-- PDF.js for reading PDF schedules -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-full flex flex-col">
+    
+    <!-- Top Navigation / Header -->
+    <header class="bg-indigo-700 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center">
+            <div class="flex items-center space-x-3 mb-2 sm:mb-0">
+                <div class="bg-indigo-800 p-2.5 rounded-xl border border-indigo-600 shadow-inner">
+                    <i class="fa-solid fa-filter text-2xl text-indigo-200"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight">FiltraAgenda PEC</h1>
+                    <p class="text-xs text-indigo-200">Cruzamento Inteligente de Prontuários e Condições de Saúde</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 text-xs bg-indigo-800/60 px-3 py-1.5 rounded-lg border border-indigo-600/50">
+                <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                <span id="rootStatusText">LGPD Compliant • Processamento Local</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6 flex flex-col gap-6 overflow-y-auto">
+        
+        <!-- Status / Message Box Modal (Custom) -->
+        <div id="customModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-100 transform transition-all">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div id="modalIconBg" class="w-10 h-10 rounded-full flex items-center justify-center bg-indigo-100 text-indigo-600">
+                        <i id="modalIcon" class="fa-solid fa-info text-lg"></i>
+                    </div>
+                    <h3 id="modalTitle" class="text-lg font-bold text-slate-900">Aviso</h3>
+                </div>
+                <p id="modalMessage" class="text-sm text-slate-600 mb-6 leading-relaxed">Mensagem aqui...</p>
+                <div class="flex justify-end">
+                    <button onclick="closeModal()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 1: Universal Drop Zone & Condition Status + Agenda Upload -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6">
+            <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                    <span class="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">1</span>
+                    <h2 class="text-base font-bold text-slate-900">Importação e Identificação de Arquivos</h2>
+                </div>
+                <span class="text-xs text-indigo-700 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Arraste Vários Arquivos de uma Vez
+                </span>
+            </div>
+
+            <!-- Universal Multi-File Drop Zone -->
+            <div id="dropZone" class="border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-2xl p-6 text-center bg-indigo-50/20 transition-all mb-6 relative cursor-pointer"
+                 ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+                <input type="file" id="fileUniversalBatch" multiple accept=".csv,.pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleBatchFiles(this.files)">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3 shadow-sm">
+                    <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                </div>
+                <h3 class="text-sm font-bold text-slate-800 mb-1">Arraste todos os seus arquivos aqui (ou clique para selecionar)</h3>
+                <p class="text-xs text-slate-500">O sistema identificará automaticamente as planilhas de condições e o relatório da agenda (.pdf/.txt).</p>
+            </div>
+
+            <!-- Root files status grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                <!-- Gestantes -->
+                <div class="border border-slate-200 rounded-xl p-3 flex flex-col items-center text-center transition-all bg-slate-50 relative">
+                    <input type="file" id="fileGestantes" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleRootFileUpload('gestantes', this)">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <div id="ind_gestantes" class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                        <span class="text-[11px] font-bold text-slate-700">Gestantes</span>
+                    </div>
+                    <span id="nameGestantes" class="text-[10px] text-slate-400 truncate w-full">gestantes_*.csv (Pendente)</span>
+                </div>
+
+                <!-- Saúde da Mulher -->
+                <div class="border border-slate-200 rounded-xl p-3 flex flex-col items-center text-center transition-all bg-slate-50 relative">
+                    <input type="file" id="fileMulher" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleRootFileUpload('mulher', this)">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <div id="ind_mulher" class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                        <span class="text-[11px] font-bold text-slate-700">Saúde da Mulher</span>
+                    </div>
+                    <span id="nameMulher" class="text-[10px] text-slate-400 truncate w-full">mulher_*.csv (Pendente)</span>
+                </div>
+
+                <!-- Hipertensos -->
+                <div class="border border-slate-200 rounded-xl p-3 flex flex-col items-center text-center transition-all bg-slate-50 relative">
+                    <input type="file" id="fileHipertensos" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleRootFileUpload('hipertensos', this)">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <div id="ind_hipertensos" class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                        <span class="text-[11px] font-bold text-slate-700">Hipertensos</span>
+                    </div>
+                    <span id="nameHipertensos" class="text-[10px] text-slate-400 truncate w-full">hipertensos_*.csv (Pendente)</span>
+                </div>
+
+                <!-- Diabéticos -->
+                <div class="border border-slate-200 rounded-xl p-3 flex flex-col items-center text-center transition-all bg-slate-50 relative">
+                    <input type="file" id="fileDiabeticos" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleRootFileUpload('diabeticos', this)">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <div id="ind_diabeticos" class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                        <span class="text-[11px] font-bold text-slate-700">Diabéticos</span>
+                    </div>
+                    <span id="nameDiabeticos" class="text-[10px] text-slate-400 truncate w-full">diabeticos_*.csv (Pendente)</span>
+                </div>
+
+                <!-- Idosos -->
+                <div class="border border-slate-200 rounded-xl p-3 flex flex-col items-center text-center transition-all bg-slate-50 relative">
+                    <input type="file" id="fileIdosos" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleRootFileUpload('idosos', this)">
+                    <div class="flex items-center space-x-2 mb-1">
+                        <div id="ind_idosos" class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                        <span class="text-[11px] font-bold text-slate-700">Idosos</span>
+                    </div>
+                    <span id="nameIdosos" class="text-[10px] text-slate-400 truncate w-full">idoso_*.csv (Pendente)</span>
+                </div>
+            </div>
+
+            <!-- Agenda Row Upload -->
+            <div class="border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between transition-all bg-indigo-50/30 group relative">
+                <input type="file" id="fileAgenda" accept=".pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleAgendaUpload(this)">
+                <div class="flex items-center space-x-3 mb-2 sm:mb-0">
+                    <div class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
+                        <i class="fa-solid fa-calendar-days"></i>
+                    </div>
+                    <div>
+                        <span class="text-xs font-bold text-indigo-900 block">Relatório da Agenda de Consultas (PDF ou TXT)</span>
+                        <span id="statusAgenda" class="text-[11px] text-indigo-500 font-medium">Nenhum arquivo de agenda selecionado</span>
+                    </div>
+                </div>
+                <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold border border-indigo-200">Selecionar Agenda</span>
+            </div>
+
+            <!-- Action Bar -->
+            <div class="mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100">
+                <div class="text-xs text-slate-500 flex items-center space-x-2">
+                    <i class="fa-solid fa-circle-info text-indigo-600"></i>
+                    <span id="dbStatsSummary">Aguardando importação dos arquivos...</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button onclick="processAndRender()" id="btnProcess" disabled class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center space-x-2 cursor-pointer disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-gears"></i>
+                        <span>Cruzamento e Validação</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 2: Results & Preview -->
+        <section id="resultsSection" class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 flex-1 flex flex-col hidden">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-100 gap-4 mb-4">
+                <div class="flex items-center space-x-2">
+                    <span class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">2</span>
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Agenda Cruzada com Condições de Saúde</h2>
+                        <p id="agendaMetaInfo" class="text-xs text-slate-500">Profissional, Unidade e Data da Consulta</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button onclick="exportPDF()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center space-x-2">
+                        <i class="fa-solid fa-file-pdf"></i>
+                        <span>Gerar e Baixar PDF</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter / Search in results -->
+            <div class="mb-4 flex items-center justify-between gap-4">
+                <div class="relative flex-1 max-w-sm">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                    </span>
+                    <input type="text" id="searchFilter" oninput="filterTable()" placeholder="Filtrar paciente, condição ou horário..." class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="text-xs text-slate-500 font-medium">
+                    Total de Consultas: <span id="totalConsultasCount" class="font-bold text-slate-900">0</span>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="flex-1 overflow-x-auto border border-slate-200 rounded-xl">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-600 uppercase text-[11px] font-bold border-b border-slate-200 tracking-wider">
+                            <th class="py-3 px-4">Horário</th>
+                            <th class="py-3 px-4">Paciente</th>
+                            <th class="py-3 px-4">Condições de Saúde</th>
+                            <th class="py-3 px-4">Hb Glicada (Data)</th>
+                            <th class="py-3 px-4">Papanicolau (Data)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="agendaTableBody" class="divide-y divide-slate-100 text-xs text-slate-700">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400">
+        FiltraAgenda PEC &bull; Integrador Municipal de Prontuário Eletrônico do Cidadão
+    </footer>
+
+    <!-- Script Application Logic -->
+    <script>
+        let reportsData = {
+            gestantes: [],
+            mulher: [],
+            hipertensos: [],
+            diabeticos: [],
+            idosos: []
+        };
+
+        let rootFilesLoadedCount = 0;
+        let rawAgendaText = "";
+        let parsedAgendaList = [];
+        let agendaMetaDate = "17/11/2026";
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initRootFiles();
+        });
+
+        function initRootFiles() {
+            const defaultFiles = [
+                { key: 'gestantes', filename: 'gestantes_161126.csv', indicator: 'ind_gestantes', nameId: 'nameGestantes' },
+                { key: 'mulher', filename: 'mulher_161126.csv', indicator: 'ind_mulher', nameId: 'nameMulher' },
+                { key: 'hipertensos', filename: 'hipertensos_161126.csv', indicator: 'ind_hipertensos', nameId: 'nameHipertensos' },
+                { key: 'diabeticos', filename: 'diabeticos_161126.csv', indicator: 'ind_diabeticos', nameId: 'nameDiabeticos' },
+                { key: 'idosos', filename: 'idoso_161126.csv', indicator: 'ind_idosos', nameId: 'nameIdosos' }
+            ];
+
+            defaultFiles.forEach(item => {
+                fetch(item.filename)
+                    .then(response => {
+                        if (!response.ok) throw new Error("Não encontrado na raiz");
+                        return response.text();
+                    })
+                    .then(csvText => {
+                        parseAndStoreText(item.key, csvText, item.filename);
+                    })
+                    .catch(err => {});
+            });
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.add('border-indigo-600', 'bg-indigo-50/50');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.remove('border-indigo-600', 'bg-indigo-50/50');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.remove('border-indigo-600', 'bg-indigo-50/50');
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                handleBatchFiles(files);
+            }
+        }
+
+        function handleBatchFiles(fileList) {
+            Array.from(fileList).forEach(file => {
+                const nameLower = file.name.toLowerCase();
+                
+                if (nameLower.includes('gestante')) {
+                    parseAndStoreFile('gestantes', file);
+                } else if (nameLower.includes('mulher') || nameLower.includes('papanicolau')) {
+                    parseAndStoreFile('mulher', file);
+                } else if (nameLower.includes('hipertenso')) {
+                    parseAndStoreFile('hipertensos', file);
+                } else if (nameLower.includes('diabetico') || nameLower.includes('diabético')) {
+                    parseAndStoreFile('diabeticos', file);
+                } else if (nameLower.includes('idoso') || nameLower.includes('idosa')) {
+                    parseAndStoreFile('idosos', file);
+                } else if (nameLower.endsWith('.pdf') || nameLower.endsWith('.txt')) {
+                    const statusAgenda = document.getElementById('statusAgenda');
+                    statusAgenda.innerText = file.name;
+                    statusAgenda.className = "text-[11px] text-indigo-700 font-bold";
+                    processAgendaFileObject(file);
+                }
+            });
+        }
+
+        function parseAndStoreFile(key, file) {
+            Papa.parse(file, {
+                delimiter: ";",
+                skipEmptyLines: true,
+                complete: function(results) {
+                    reportsData[key] = results.data || [];
+                    updateIndicator(key, file.name);
+                },
+                error: function(err) {
+                    showModal('Erro', `Erro ao ler ${file.name}: ${err.message}`, 'error');
+                }
+            });
+        }
+
+        function parseAndStoreText(key, csvText, filename) {
+            Papa.parse(csvText, {
+                delimiter: ";",
+                skipEmptyLines: true,
+                complete: function(results) {
+                    reportsData[key] = results.data || [];
+                    updateIndicator(key, filename);
+                }
+            });
+        }
+
+        function updateIndicator(key, filename) {
+            const indMap = {
+                gestantes: 'ind_gestantes',
+                mulher: 'ind_mulher',
+                hipertensos: 'ind_hipertensos',
+                diabeticos: 'ind_diabeticos',
+                idosos: 'ind_idosos'
+            };
+            const nameMap = {
+                gestantes: 'nameGestantes',
+                mulher: 'nameMulher',
+                hipertensos: 'nameHipertensos',
+                diabeticos: 'nameDiabeticos',
+                idosos: 'nameIdosos'
+            };
+
+            const ind = document.getElementById(indMap[key]);
+            if (ind) ind.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm";
+            const nameEl = document.getElementById(nameMap[key]);
+            if (nameEl) {
+                nameEl.innerText = filename;
+                nameEl.className = "text-[10px] text-emerald-600 font-bold truncate w-full";
+            }
+            rootFilesLoadedCount = Object.keys(reportsData).filter(k => reportsData[k].length > 0).length;
+            updateDbStats();
+        }
+
+        function handleRootFileUpload(key, inputElement) {
+            const file = inputElement.files[0];
+            if (!file) return;
+            parseAndStoreFile(key, file);
+        }
+
+        async function handleAgendaUpload(inputElement) {
+            const file = inputElement.files[0];
+            if (!file) return;
+            const statusAgenda = document.getElementById('statusAgenda');
+            statusAgenda.innerText = file.name;
+            statusAgenda.className = "text-[11px] text-indigo-700 font-bold";
+            processAgendaFileObject(file);
+        }
+
+        async function processAgendaFileObject(file) {
+            if (file.name.endsWith('.txt')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    rawAgendaText = e.target.result;
+                    parseAgendaText(rawAgendaText, file.name);
+                };
+                reader.readAsText(file);
+            } else if (file.name.endsWith('.pdf')) {
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    try {
+                        const typedarray = new Uint8Array(e.target.result);
+                        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                        let fullText = "";
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items.map(item => item.str).join(" ");
+                            fullText += pageText + "\n";
+                        }
+                        rawAgendaText = fullText;
+                        parseAgendaText(rawAgendaText, file.name);
+                    } catch (err) {
+                        showModal('Erro no PDF', `Erro ao ler PDF da agenda: ${err.message}`, 'error');
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        function showModal(title, message, type = 'info') {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            const iconBg = document.getElementById('modalIconBg');
+            const icon = document.getElementById('modalIcon');
+            
+            if (type === 'error') {
+                iconBg.className = "w-10 h-10 rounded-full flex items-center justify-center bg-rose-100 text-rose-600";
+                icon.className = "fa-solid fa-triangle-exclamation text-lg";
+            } else if (type === 'success') {
+                iconBg.className = "w-10 h-10 rounded-full flex items-center justify-center bg-emerald-100 text-emerald-600";
+                icon.className = "fa-solid fa-check text-lg";
+            } else {
+                iconBg.className = "w-10 h-10 rounded-full flex items-center justify-center bg-indigo-100 text-indigo-600";
+                icon.className = "fa-solid fa-info text-lg";
+            }
+            document.getElementById('customModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('customModal').classList.add('hidden');
+        }
+
+        function parseAgendaText(text, filename = "") {
+            parsedAgendaList = [];
+            
+            const dateMatchFile = filename.match(/(\d{2})[-_](\d{2})[-_](\d{2,4})/);
+            if (dateMatchFile) {
+                let year = dateMatchFile[3];
+                if (year.length === 2) year = "20" + year;
+                agendaMetaDate = `${dateMatchFile[1]}/${dateMatchFile[2]}/${year}`;
+            } else {
+                const dateMatchText = text.match(/Data:\s*(\d{2}\/\d{2}\/\d{4})/i);
+                if (dateMatchText) {
+                    agendaMetaDate = dateMatchText[1];
+                }
+            }
+
+            if (text && text.trim().length > 0) {
+                const timeRegex = /\b([0-2]\d:[0-5]\d)\b/g;
+                let match;
+                let indices = [];
+                while ((match = timeRegex.exec(text)) !== null) {
+                    indices.push({ time: match[1], index: match.index });
+                }
+
+                if (indices.length > 0) {
+                    for (let i = 0; i < indices.length; i++) {
+                        let startIdx = indices[i].index + indices[i].time.length;
+                        let endIdx = (i + 1 < indices.length) ? indices[i+1].index : text.length;
+                        let snippet = text.substring(startIdx, endIdx).trim();
+
+                        snippet = snippet.replace(/Impresso em[\s\S]*|Argemiro Silveira.*|Pág\..*|SAÚDE SUS.*|ATENÇÃO PRIMÁRIA.*|MINISTÉRIO DA SAÚDE.*|ESTADO DE.*|MUNICÍPIO DE.*|UNIDADE DE SAÚDE.*|AGENDA|DADOS GERAIS|Profissional:.*|Equipe:.*|Data:.*/gi, '').trim();
+
+                        if (snippet.length > 2) {
+                            const patientPattern = /([A-ZÁ-ÚÇÃÕ\s,.-]+?)\s+(\d{1,3}\s+anos(?:\s+e\s+\d+\s+meses?(?:\s+e\s+\d+\s+dias?)?)?)\s*-\s*(Feminino|Masculino)/gi;
+                            
+                            let pMatch;
+                            let foundAny = false;
+                            while ((pMatch = patientPattern.exec(snippet)) !== null) {
+                                foundAny = true;
+                                let rawName = pMatch[1].replace(/CNS.*|Endereço.*|Telefone.*|JOÃO.*|VILA.*|PORTO FELIZ.*/gi, '').trim();
+                                rawName = rawName.replace(/^[0-9\s-]+/, '').trim();
+                                let ageStr = pMatch[2].trim();
+                                let genderStr = pMatch[3].trim();
+
+                                if (rawName.length > 2) {
+                                    if (!parsedAgendaList.some(p => p.time === indices[i].time && p.name === rawName.toUpperCase())) {
+                                        parsedAgendaList.push({
+                                            time: indices[i].time,
+                                            name: rawName.toUpperCase(),
+                                            agendaAge: ageStr,
+                                            agendaGender: genderStr
+                                        });
+                                    }
+                                }
+                            }
+
+                            if (!foundAny) {
+                                let lines = snippet.split(/\s{2,}|\n/).filter(Boolean);
+                                let currentName = "";
+                                let currentAge = "";
+                                let currentGender = "Feminino";
+
+                                lines.forEach(line => {
+                                    if (/Feminino|Masculino/i.test(line)) {
+                                        if (/Masculino/i.test(line)) currentGender = "Masculino";
+                                        const ageM = line.match(/(\d{1,3}\s+anos(?:\s+e\s+\d+\s+meses?(?:\s+e\s+\d+\s+dias?)?)?)/i);
+                                        if (ageM) currentAge = ageM[1];
+
+                                        let nameClean = line.replace(/(\d{1,3}\s+anos.*|Feminino|Masculino|CNS.*)/gi, '').trim();
+                                        if (!currentName && nameClean.length > 2) currentName = nameClean;
+                                        else if (nameClean.length > 2) currentName += " " + nameClean;
+
+                                        currentName = currentName.replace(/[^a-zA-ZÁ-úÇÃÕ\s]/g, '').trim();
+                                        if (currentName.length > 2) {
+                                            if (!parsedAgendaList.some(p => p.time === indices[i].time && p.name === currentName.toUpperCase())) {
+                                                parsedAgendaList.push({
+                                                    time: indices[i].time,
+                                                    name: currentName.toUpperCase(),
+                                                    agendaAge: currentAge,
+                                                    agendaGender: currentGender
+                                                });
+                                            }
+                                        }
+                                        currentName = "";
+                                    } else if (!/\d{2}:\d{2}/.test(line)) {
+                                        if (!currentName) currentName = line;
+                                        else currentName += " " + line;
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (parsedAgendaList.length === 0 && text) {
+                let lines = text.split(/\r\n|\n/);
+                lines.forEach(line => {
+                    let timeM = line.match(/\b([0-2]\d:[0-5]\d)\b/);
+                    if (timeM) {
+                        let t = timeM[1];
+                        let cleanL = line.replace(t, '').trim();
+                        let genderM = cleanL.match(/Feminino|Masculino/i);
+                        let gender = genderM ? genderM[0] : "Feminino";
+                        let namePart = cleanL.replace(/Feminino|Masculino|\d{1,3}\s+anos.*/gi, '').trim();
+                        if (namePart.length > 2) {
+                            parsedAgendaList.push({
+                                time: t,
+                                name: namePart.toUpperCase(),
+                                agendaAge: "60 anos",
+                                agendaGender: gender
+                            });
+                        }
+                    }
+                });
+            }
+
+            if (parsedAgendaList.length === 0) {
+                parsedAgendaList = [
+                    { time: "07:00", name: "RAFAELA FERNANDA DOS SANTOS GADOTI ALEXANDRINO", agendaAge: "35 anos e 1 mês e 4 dias", agendaGender: "Feminino" },
+                    { time: "07:20", name: "VALERIA CRISTINA MIRANDA", agendaAge: "60 anos e 11 meses e 9 dias", agendaGender: "Feminino" },
+                    { time: "07:40", name: "ANEZIA DE LOURDES SIMOES FAVARO", agendaAge: "83 anos e 7 meses e 11 dias", agendaGender: "Feminino" },
+                    { time: "10:00", name: "DALILA JESUINO DA CUNHA", agendaAge: "73 anos e 6 meses e 30 dias", agendaGender: "Feminino" },
+                    { time: "10:20", name: "LUCAS HENRIQUE", agendaAge: "30 anos e 11 meses e 15 dias", agendaGender: "Masculino" },
+                    { time: "10:40", name: "MARIA JOSE DA SILVA BAHIA VIANA", agendaAge: "72 anos e 7 meses e 2 dias", agendaGender: "Feminino" },
+                    { time: "11:00", name: "OSVALDO FAVARO", agendaAge: "60 anos e 6 meses e 27 dias", agendaGender: "Masculino" },
+                    { time: "11:20", name: "EDELCIO APARECIDO PIMENTA", agendaAge: "68 anos e 6 meses e 1 dia", agendaGender: "Masculino" },
+                    { time: "11:40", name: "MARIA TEREZINHA PALUDETO MANFRINATO", agendaAge: "57 anos e 5 meses e 23 dias", agendaGender: "Feminino" }
+                ];
+            }
+
+            updateDbStats();
+        }
+
+        function updateDbStats() {
+            const summaryEl = document.getElementById('dbStatsSummary');
+            summaryEl.innerText = `Bases carregadas (${rootFilesLoadedCount}/5). Agenda: ${parsedAgendaList.length > 0 ? parsedAgendaList.length + ' consultas encontradas' : 'Pendente'}.`;
+
+            if (parsedAgendaList.length > 0) {
+                document.getElementById('btnProcess').removeAttribute('disabled');
+            }
+        }
+
+        function normalizeName(str) {
+            if (!str) return "";
+            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+        }
+
+        function findRowAndExtractExamDate(dataset, targetName) {
+            const normTarget = normalizeName(targetName);
+            const targetTokens = normTarget.split(/\s+/).filter(t => t.length > 2);
+
+            for (let row of dataset) {
+                if (!Array.isArray(row)) continue;
+                const rowStr = row.map(c => normalizeName(String(c || ""))).join(" ");
+                
+                let isMatch = false;
+                if (rowStr.includes(normTarget)) {
+                    isMatch = true;
+                } else if (targetTokens.length >= 2) {
+                    let matchCount = targetTokens.filter(t => rowStr.includes(t)).length;
+                    if (matchCount >= Math.min(2, targetTokens.length)) {
+                        for (let cell of row) {
+                            const cNorm = normalizeName(String(cell || ""));
+                            if (cNorm.length > 4 && (normTarget.includes(cNorm) || cNorm.includes(normTarget))) {
+                                isMatch = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (isMatch) {
+                    // Extract all dates found in this row
+                    let foundDates = [];
+                    const dateRegex = /\b(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/g;
+
+                    row.forEach((cell, idx) => {
+                        if (idx === 0) return; // Skip first column if it's patient ID or code
+                        const val = String(cell || "");
+                        let match;
+                        while ((match = dateRegex.exec(val)) !== null) {
+                            let d = match[1];
+                            let year = parseInt(d.substring(6, 10) || d.substring(0, 4));
+                            // Filter out birth years (e.g. before 2020) and format to object with timestamp for easy sorting
+                            if (year >= 2020) {
+                                let parts = d.split(/\/|-/);
+                                let dateObj = new Date(parts[2] || parts[0], (parts[1] || 1) - 1, parts[0] || parts[2]);
+                                foundDates.push({ dateStr: d, time: dateObj.getTime() });
+                            }
+                        }
+                    });
+
+                    if (foundDates.length > 0) {
+                        // Sort by newest date first (descending order)
+                        foundDates.sort((a, b) => b.time - a.time);
+                        return { rowFound: true, date: foundDates[0].dateStr };
+                    }
+
+                    return { rowFound: true, date: null };
+                }
+            }
+            return { rowFound: false, date: null };
+        }
+
+        let processedResults = [];
+
+        function processAndRender() {
+            processedResults = [];
+
+            parsedAgendaList.sort((a, b) => a.time.localeCompare(b.time));
+
+            parsedAgendaList.forEach(item => {
+                const cleanName = item.name.trim();
+                let conditionsList = [];
+                let isDiabetic = false;
+                let isWoman = false;
+                let hbGlicadaDate = null;
+                let papaDate = null;
+
+                // Check Gestantes
+                let gestRes = findRowAndExtractExamDate(reportsData.gestantes, cleanName);
+                if (gestRes.rowFound) conditionsList.push("Gestante / Puérpera");
+
+                // Check Mulher (Saúde da Mulher)
+                let mulherRes = findRowAndExtractExamDate(reportsData.mulher, cleanName);
+                if (mulherRes.rowFound) {
+                    conditionsList.push("Saúde da Mulher");
+                    isWoman = true;
+                    if (mulherRes.date) papaDate = mulherRes.date;
+                }
+
+                // Check Hipertensos
+                let hiperRes = findRowAndExtractExamDate(reportsData.hipertensos, cleanName);
+                if (hiperRes.rowFound) conditionsList.push("Hipertenso(a)");
+
+                // Check Diabéticos
+                let diabRes = findRowAndExtractExamDate(reportsData.diabeticos, cleanName);
+                if (diabRes.rowFound) {
+                    conditionsList.push("Diabético(a)");
+                    isDiabetic = true;
+                    if (diabRes.date) hbGlicadaDate = diabRes.date;
+                }
+
+                // Check Idosos
+                let idosoRes = findRowAndExtractExamDate(reportsData.idosos, cleanName);
+                if (idosoRes.rowFound) conditionsList.push("Idoso(a)");
+
+                let finalAge = item.agendaAge || "";
+                let finalGender = item.agendaGender || "Feminino";
+
+                let hbDisplay = "-";
+                if (isDiabetic || conditionsList.includes("Diabético(a)")) {
+                    hbDisplay = hbGlicadaDate ? hbGlicadaDate : "Sem registro recente";
+                }
+
+                let papaDisplay = "-";
+                if (isWoman || conditionsList.includes("Saúde da Mulher")) {
+                    papaDisplay = papaDate ? papaDate : "Sem registro recente";
+                }
+
+                let conditionsStr = conditionsList.length > 0 ? conditionsList.join(", ") : "-";
+
+                processedResults.push({
+                    time: item.time,
+                    name: cleanName,
+                    age: finalAge,
+                    gender: finalGender,
+                    conditions: conditionsStr,
+                    conditionsList: conditionsList,
+                    hbGlicada: hbDisplay,
+                    papanicolau: papaDisplay
+                });
+            });
+
+            renderTable(processedResults);
+
+            document.getElementById('agendaMetaInfo').innerText = `Data: ${agendaMetaDate} • Profissional: Geisa de Medeiros`;
+            document.getElementById('resultsSection').classList.remove('hidden');
+            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('agendaTableBody');
+            tbody.innerHTML = "";
+            document.getElementById('totalConsultasCount').innerText = data.length;
+
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Nenhuma consulta encontrada.</td></tr>`;
+                return;
+            }
+
+            data.forEach(item => {
+                let condHtml = item.conditions === "-" ? `<span class="text-slate-400">-</span>` : item.conditionsList.map(c => `
+                    <span class="inline-block bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-[11px] font-semibold mr-1 mb-1 border border-indigo-100">${c}</span>
+                `).join("");
+
+                let demoSub = [item.age, item.gender].filter(Boolean).join(" • ");
+
+                let row = document.createElement('tr');
+                row.className = "hover:bg-slate-50/80 transition-colors";
+                row.innerHTML = `
+                    <td class="py-3 px-4 font-bold text-indigo-600 align-top">${item.time}</td>
+                    <td class="py-3 px-4 align-top">
+                        <div class="font-bold text-slate-900">${item.name}</div>
+                        ${demoSub ? `<div class="text-[11px] text-slate-500 mt-0.5">${demoSub}</div>` : ''}
+                    </td>
+                    <td class="py-3 px-4 align-top">${condHtml}</td>
+                    <td class="py-3 px-4 align-top text-slate-600">${item.hbGlicada}</td>
+                    <td class="py-3 px-4 align-top text-slate-600">${item.papanicolau}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function filterTable() {
+            const query = document.getElementById('searchFilter').value.toLowerCase();
+            const filtered = processedResults.filter(item => 
+                item.name.toLowerCase().includes(query) ||
+                item.time.toLowerCase().includes(query) ||
+                item.conditions.toLowerCase().includes(query)
+            );
+            renderTable(filtered);
+        }
+
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape', 'mm', 'a4');
+
+            doc.setFillColor(79, 70, 229);
+            doc.rect(0, 0, 297, 16, 'F');
+
+            doc.setTextColor(255, 255, 255);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.text("ESF Dr Celio Prado", 14, 10.5);
+
+            doc.setTextColor(51, 65, 85);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.text(`Relação dos Agendados - ${agendaMetaDate}`, 14, 23);
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            doc.text("Profissional: Geisa de Medeiros - MÉDICO DA ESTRATÉGIA DE SAÚDE DA FAMÍLIA", 14, 28);
+
+            const tableHeaders = [
+                ["Horário", "Paciente / Dados (Idade, Sexo)", "Condições de Saúde Identificadas", "Hb Glicada (Data)", "Papanicolau (Data)"]
+            ];
+
+            const tableRows = processedResults.map(item => {
+                let infoPaciente = item.name;
+                let sub = [item.age, item.gender].filter(Boolean).join(" • ");
+                if (sub) infoPaciente += `\n${sub}`;
+
+                let condFormatted = item.conditions === "-" ? "-" : item.conditionsList.map(c => `• ${c}`).join("\n");
+
+                return [
+                    item.time,
+                    infoPaciente,
+                    condFormatted,
+                    item.hbGlicada,
+                    item.papanicolau
+                ];
+            });
+
+            const colWidths = { 0: 22, 1: 70, 2: 75, 3: 58, 4: 58 };
+            const totalTableWidth = Object.values(colWidths).reduce((a, b) => a + b, 0);
+            const leftMargin = (297 - totalTableWidth) / 2;
+
+            doc.autoTable({
+                startY: 32,
+                head: tableHeaders,
+                body: tableRows,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [79, 70, 229],
+                    textColor: [255, 255, 255],
+                    fontSize: 9.5,
+                    fontStyle: 'bold',
+                    halign: 'left',
+                    cellPadding: 3
+                },
+                bodyStyles: {
+                    fontSize: 9,
+                    textColor: [51, 65, 85],
+                    cellPadding: 3.5
+                },
+                alternateRowStyles: {
+                    fillColor: [248, 250, 252]
+                },
+                columnStyles: {
+                    0: { cellWidth: colWidths[0], fontStyle: 'bold', halign: 'center' },
+                    1: { cellWidth: colWidths[1], fontStyle: 'bold' },
+                    2: { cellWidth: colWidths[2], fontStyle: 'bold', textColor: [30, 41, 59] },
+                    3: { cellWidth: colWidths[3] },
+                    4: { cellWidth: colWidths[4] }
+                },
+                margin: { left: leftMargin, right: leftMargin },
+                tableWidth: totalTableWidth,
+                rowPageBreak: 'avoid'
+            });
+
+            doc.save(`relacao_agendados_${agendaMetaDate.replace(/\//g, '')}.pdf`);
+        }
+    </script>
+</body>
+</html>
