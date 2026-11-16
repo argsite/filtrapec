@@ -34,12 +34,12 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-bold tracking-tight">FiltraAgenda PEC</h1>
-                    <p class="text-xs text-indigo-200">Cruzamento da Agenda com Condições de Saúde e Exames</p>
+                    <p class="text-xs text-indigo-200">Cruzamento Inteligente de Prontuários e Condições de Saúde</p>
                 </div>
             </div>
             <div class="flex items-center space-x-2 text-xs bg-indigo-800/60 px-3 py-1.5 rounded-lg border border-indigo-600/50">
                 <i class="fa-solid fa-shield-halved text-emerald-400"></i>
-                <span id="rootStatusText">Compatível com a LGPD  • Processamento Local</span>
+                <span id="rootStatusText">LGPD Compliant • Processamento Local</span>
             </div>
         </div>
     </header>
@@ -73,7 +73,7 @@
                     <h2 class="text-base font-bold text-slate-900">Importação e Identificação de Arquivos</h2>
                 </div>
                 <span class="text-xs text-indigo-700 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
-                    <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Arraste vários arquivos de uma vez
+                    <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Arraste Vários Arquivos de uma Vez
                 </span>
             </div>
 
@@ -84,8 +84,8 @@
                 <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3 shadow-sm">
                     <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
                 </div>
-                <h3 class="text-sm font-bold text-slate-800 mb-1">Arraste as planilhas de condições de saúde da sua área e a agenda aqui (ou clique para selecionar)</h3>
-                <p class="text-xs text-slate-500">O sistema identificará automaticamente as planilhas e o relatório da agenda (.pdf/.txt).</p>
+                <h3 class="text-sm font-bold text-slate-800 mb-1">Arraste todos os seus arquivos aqui (ou clique para selecionar)</h3>
+                <p class="text-xs text-slate-500">O sistema identificará automaticamente as planilhas de condições e o relatório da agenda (.pdf/.txt).</p>
             </div>
 
             <!-- Root files status grid -->
@@ -165,7 +165,7 @@
                 <div class="flex items-center space-x-3">
                     <button onclick="processAndRender()" id="btnProcess" disabled class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center space-x-2 cursor-pointer disabled:cursor-not-allowed">
                         <i class="fa-solid fa-gears"></i>
-                        <span>Gerar o Relatório</span>
+                        <span>Cruzamento e Validação</span>
                     </button>
                 </div>
             </div>
@@ -242,6 +242,8 @@
         let rawAgendaText = "";
         let parsedAgendaList = [];
         let agendaMetaDate = "17/11/2026";
+        let extractedUnidade = "Unidade Básica de Saúde";
+        let extractedProfissional = "Profissional de Saúde";
 
         window.addEventListener('DOMContentLoaded', () => {
             initRootFiles();
@@ -438,6 +440,29 @@
         function parseAgendaText(text, filename = "") {
             parsedAgendaList = [];
             
+            // Extract Unidade de Saúde dynamically from text
+            const unidadeMatch = text.match(/UNIDADE DE SAÚDE\s*([^\n\r]+?)(?=\bAGENDA\b|\bDATA\b|\bEQUIPE\b|$)/i);
+            if (unidadeMatch && unidadeMatch[1].trim().length > 2) {
+                extractedUnidade = unidadeMatch[1].trim();
+            } else {
+                const altUnidade = text.match(/(ESF\s+[^\n\r]+|UBS\s+[^\n\r]+|US\s+[^\n\r]+)/i);
+                if (altUnidade) extractedUnidade = altUnidade[1].trim();
+            }
+
+            // Extract Professional dynamically from text and clean up excess titles (e.g., "- MÉDICO DA ESTRATÉGIA...")
+            const profMatch = text.match(/Profissional:\s*([^\n\r]+)/i);
+            if (profMatch && profMatch[1].trim().length > 2) {
+                let rawProf = profMatch[1].trim();
+                // Remove everything after dash, hyphen, or common medical/nursing titles
+                rawProf = rawProf.split(/[-–—]/)[0].trim();
+                rawProf = rawProf.replace(/(MEDICO|MÉDICO|ENFERMEIRO|ENFERMEIRA|CIRURGIAO|DENTISTA|MEDICA|MÉDICA).*/i, '').trim();
+                if (rawProf.length > 2) {
+                    extractedProfissional = rawProf;
+                } else {
+                    extractedProfissional = profMatch[1].trim().split(/[-–—]/)[0].trim();
+                }
+            }
+
             const dateMatchFile = filename.match(/(\d{2})[-_](\d{2})[-_](\d{2,4})/);
             if (dateMatchFile) {
                 let year = dateMatchFile[3];
@@ -570,7 +595,7 @@
 
         function updateDbStats() {
             const summaryEl = document.getElementById('dbStatsSummary');
-            summaryEl.innerText = `Bases carregadas (${rootFilesLoadedCount}/5). Agenda: ${parsedAgendaList.length > 0 ? parsedAgendaList.length + ' consultas encontradas' : 'Pendente'}.`;
+            summaryEl.innerText = `Bases carregadas (${rootFilesLoadedCount}/5). Unidade: ${extractedUnidade} | Profissional: ${extractedProfissional}. Agenda: ${parsedAgendaList.length} consultas encontradas.`;
 
             if (parsedAgendaList.length > 0) {
                 document.getElementById('btnProcess').removeAttribute('disabled');
@@ -607,18 +632,16 @@
                 }
 
                 if (isMatch) {
-                    // Extract all dates found in this row
                     let foundDates = [];
                     const dateRegex = /\b(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})\b/g;
 
                     row.forEach((cell, idx) => {
-                        if (idx === 0) return; // Skip first column if it's patient ID or code
+                        if (idx === 0) return;
                         const val = String(cell || "");
                         let match;
                         while ((match = dateRegex.exec(val)) !== null) {
                             let d = match[1];
                             let year = parseInt(d.substring(6, 10) || d.substring(0, 4));
-                            // Filter out birth years (e.g. before 2020) and format to object with timestamp for easy sorting
                             if (year >= 2020) {
                                 let parts = d.split(/\/|-/);
                                 let dateObj = new Date(parts[2] || parts[0], (parts[1] || 1) - 1, parts[0] || parts[2]);
@@ -628,7 +651,6 @@
                     });
 
                     if (foundDates.length > 0) {
-                        // Sort by newest date first (descending order)
                         foundDates.sort((a, b) => b.time - a.time);
                         return { rowFound: true, date: foundDates[0].dateStr };
                     }
@@ -654,11 +676,9 @@
                 let hbGlicadaDate = null;
                 let papaDate = null;
 
-                // Check Gestantes
                 let gestRes = findRowAndExtractExamDate(reportsData.gestantes, cleanName);
                 if (gestRes.rowFound) conditionsList.push("Gestante / Puérpera");
 
-                // Check Mulher (Saúde da Mulher)
                 let mulherRes = findRowAndExtractExamDate(reportsData.mulher, cleanName);
                 if (mulherRes.rowFound) {
                     conditionsList.push("Saúde da Mulher");
@@ -666,11 +686,9 @@
                     if (mulherRes.date) papaDate = mulherRes.date;
                 }
 
-                // Check Hipertensos
                 let hiperRes = findRowAndExtractExamDate(reportsData.hipertensos, cleanName);
                 if (hiperRes.rowFound) conditionsList.push("Hipertenso(a)");
 
-                // Check Diabéticos
                 let diabRes = findRowAndExtractExamDate(reportsData.diabeticos, cleanName);
                 if (diabRes.rowFound) {
                     conditionsList.push("Diabético(a)");
@@ -678,7 +696,6 @@
                     if (diabRes.date) hbGlicadaDate = diabRes.date;
                 }
 
-                // Check Idosos
                 let idosoRes = findRowAndExtractExamDate(reportsData.idosos, cleanName);
                 if (idosoRes.rowFound) conditionsList.push("Idoso(a)");
 
@@ -711,7 +728,7 @@
 
             renderTable(processedResults);
 
-            document.getElementById('agendaMetaInfo').innerText = `Data: ${agendaMetaDate} • Profissional: Geisa de Medeiros`;
+            document.getElementById('agendaMetaInfo').innerText = `Unidade: ${extractedUnidade} | Profissional: ${extractedProfissional} | Data: ${agendaMetaDate}`;
             document.getElementById('resultsSection').classList.remove('hidden');
             document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
         }
@@ -769,7 +786,7 @@
             doc.setTextColor(255, 255, 255);
             doc.setFont("helvetica", "bold");
             doc.setFontSize(11);
-            doc.text("ESF Dr Celio Prado", 14, 10.5);
+            doc.text(extractedUnidade, 14, 10.5);
 
             doc.setTextColor(51, 65, 85);
             doc.setFont("helvetica", "bold");
@@ -778,7 +795,7 @@
 
             doc.setFont("helvetica", "normal");
             doc.setFontSize(9);
-            doc.text("Profissional: Geisa de Medeiros - MÉDICO DA ESTRATÉGIA DE SAÚDE DA FAMÍLIA", 14, 28);
+            doc.text(`Profissional: ${extractedProfissional}`, 14, 28);
 
             const tableHeaders = [
                 ["Horário", "Paciente / Dados (Idade, Sexo)", "Condições de Saúde Identificadas", "Hb Glicada (Data)", "Papanicolau (Data)"]
