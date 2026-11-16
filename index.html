@@ -23,7 +23,6 @@
         body { font-family: 'Inter', sans-serif; }
     </style>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
 <body class="bg-slate-50 text-slate-800 h-full flex flex-col">
     
@@ -36,7 +35,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-bold tracking-tight">FiltraAgenda PEC</h1>
-                    <p class="text-xs text-indigo-200">Cruzamento de Agenda e Condições de Saúde e Exames</p>
+                    <p class="text-xs text-indigo-200">Cruzamento Inteligente de Prontuários e Condições de Saúde</p>
                 </div>
             </div>
             <div class="flex items-center space-x-2 text-xs bg-indigo-800/60 px-3 py-1.5 rounded-lg border border-indigo-600/50">
@@ -86,8 +85,8 @@
                 <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3 shadow-sm">
                     <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
                 </div>
-                <h3 class="text-sm font-bold text-slate-800 mb-1">Arraste todas as planilhas de condições e o relatório da agenda (ou selecione os arquivos)</h3>
-                <p class="text-xs text-slate-500">O sistema identificará automaticamente.</p>
+                <h3 class="text-sm font-bold text-slate-800 mb-1">Arraste todas as planilhas de condições e o relatório da agenda (ou clique para selecionar)</h3>
+                <p class="text-xs text-slate-500">O sistema identificará automaticamente os arquivos.</p>
             </div>
 
             <!-- Root files status grid -->
@@ -144,7 +143,7 @@
             </div>
 
             <!-- Agenda Row Upload -->
-            <div class="border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between transition-all bg-indigo-50/30 group relative">
+            <div class="border-2 border-dashed border-indigo-300 hover:border-indigo-500 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between transition-all bg-indigo-50/30 group relative mb-6">
                 <input type="file" id="fileAgenda" accept=".pdf,.txt" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleAgendaUpload(this)">
                 <div class="flex items-center space-x-3 mb-2 sm:mb-0">
                     <div class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
@@ -158,19 +157,16 @@
                 <span class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold border border-indigo-200">Selecionar Agenda</span>
             </div>
 
-            <!-- Action Bar -->
-            <div class="mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100">
+            <!-- Centered Prominent Action Bar -->
+            <div class="pt-4 border-t border-slate-100 flex flex-col items-center justify-center gap-3">
                 <div class="text-xs text-slate-500 flex items-center space-x-2">
                     <i class="fa-solid fa-circle-info text-indigo-600"></i>
                     <span id="dbStatsSummary">Aguardando importação dos arquivos...</span>
                 </div>
-                <div class="flex items-center space-x-3">
-                    <button onclick="processAndRender()" id="btnProcess" disabled class="w-full max-w-md py-4 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-2xl shadow-md transition-all flex items-center justify-center space-x-3 cursor-pointer disabled:cursor-not-allowed transform hover:-translate-y-0.5">
+                <button onclick="processAndRender()" id="btnProcess" disabled class="w-full max-w-md py-4 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-2xl shadow-md transition-all flex items-center justify-center space-x-3 cursor-pointer disabled:cursor-not-allowed transform hover:-translate-y-0.5">
                     <i class="fa-solid fa-gears text-lg"></i>
                     <span>Gerar a Agenda</span>
                 </button>
-
-                </div>
             </div>
         </section>
 
@@ -443,7 +439,6 @@
         function parseAgendaText(text, filename = "") {
             parsedAgendaList = [];
             
-            // Extract Unidade de Saúde dynamically from text
             const unidadeMatch = text.match(/UNIDADE DE SAÚDE\s*([^\n\r]+?)(?=\bAGENDA\b|\bDATA\b|\bEQUIPE\b|$)/i);
             if (unidadeMatch && unidadeMatch[1].trim().length > 2) {
                 extractedUnidade = unidadeMatch[1].trim();
@@ -452,11 +447,9 @@
                 if (altUnidade) extractedUnidade = altUnidade[1].trim();
             }
 
-            // Extract Professional dynamically from text and clean up excess titles (e.g., "- MÉDICO DA ESTRATÉGIA...")
             const profMatch = text.match(/Profissional:\s*([^\n\r]+)/i);
             if (profMatch && profMatch[1].trim().length > 2) {
                 let rawProf = profMatch[1].trim();
-                // Remove everything after dash, hyphen, or common medical/nursing titles
                 rawProf = rawProf.split(/[-–—]/)[0].trim();
                 rawProf = rawProf.replace(/(MEDICO|MÉDICO|ENFERMEIRO|ENFERMEIRA|CIRURGIAO|DENTISTA|MEDICA|MÉDICA).*/i, '').trim();
                 if (rawProf.length > 2) {
